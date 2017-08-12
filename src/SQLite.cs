@@ -271,7 +271,7 @@ namespace SQLite
 			// in the case where the path may include Unicode
 			// force open to using UTF-8 using sqlite3_open_v2
 			var databasePathAsBytes = GetNullTerminatedUtf8 (DatabasePath);
-			var r = SQLite3.Open (databasePathAsBytes, out handle, (int) openFlags, IntPtr.Zero);
+			var r = SQLite3.Open (databasePathAsBytes, out handle, (int)openFlags, IntPtr.Zero);
 #endif
 
 			Handle = handle;
@@ -293,6 +293,15 @@ namespace SQLite
 		public void EnableLoadExtension (bool enabled)
 		{
 			SQLite3.Result r = SQLite3.EnableLoadExtension (Handle, enabled ? 1 : 0);
+			if (r != SQLite3.Result.OK) {
+				string msg = SQLite3.GetErrmsg (Handle);
+				throw SQLiteException.New (r, msg);
+			}
+		}
+
+		public void BindFunction (string name, int numberOfArgs, object state, Func<object, object[], object> function)
+		{
+			var r = SQLite3.CreateFunction (Handle, name, numberOfArgs, state, function);
 			if (r != SQLite3.Result.OK) {
 				string msg = SQLite3.GetErrmsg (Handle);
 				throw SQLiteException.New (r, msg);
@@ -4051,6 +4060,63 @@ namespace SQLite
 		public static Result EnableLoadExtension (Sqlite3DatabaseHandle db, int onoff)
 		{
 			return (Result)Sqlite3.sqlite3_enable_load_extension (db, onoff);
+		}
+
+		public static Result CreateFunction (Sqlite3DatabaseHandle db, string name, int nArg, object v, Func<object, object[], object> func)
+		{
+			SQLitePCL.delegate_function_scalar funcDelegate = (ctx, user_data, args) => {
+				var typedArgs = new object[args.Length];
+				for (var i = 0; i < args.Length; i++) {
+					switch(Sqlite3.sqlite3_value_type (args[i])) {
+						case Sqlite3.SQLITE_INTEGER:
+							typedArgs[i] = Sqlite3.sqlite3_value_int (args[i]);
+							break;
+						case Sqlite3.SQLITE_FLOAT:
+							typedArgs[i] = Sqlite3.sqlite3_value_double (args[i]);
+							break;
+						case Sqlite3.SQLITE_TEXT:
+							typedArgs[i] = Sqlite3.sqlite3_value_text (args[i]);
+							break;
+						case Sqlite3.SQLITE_BLOB:
+							typedArgs[i] = Sqlite3.sqlite3_value_blob(args[i]);
+							break;
+						case Sqlite3.SQLITE_NULL:
+							typedArgs[i] = null;
+							break;
+					}
+				}
+
+				var result = func (user_data, typedArgs);
+				if (result==null)
+				{
+					Sqlite3.sqlite3_result_null (ctx);
+				}
+				else if (result is int)
+				{
+					Sqlite3.sqlite3_result_int (ctx, (int)result);
+				}
+				else if(result is long)
+				{
+					Sqlite3.sqlite3_result_int64 (ctx, (long)result);
+				}
+				else if (result is byte[])
+				{
+					Sqlite3.sqlite3_result_blob (ctx, (byte[])result);
+				}
+				else if (result is string)
+				{
+					Sqlite3.sqlite3_result_text (ctx, (string)result);
+				}
+				else if (result is float || result is double)
+				{
+					Sqlite3.sqlite3_result_double (ctx, (double)result);
+				}
+				else
+				{
+					throw new InvalidOperationException ($"Unable to marshal result value of type {result.GetType ().Name} back to SQLite");
+				}
+			};
+			return (Result)Sqlite3.sqlite3_create_function (db, name, nArg, v, funcDelegate);
 		}
 
 		public static int LibVersionNumber ()
