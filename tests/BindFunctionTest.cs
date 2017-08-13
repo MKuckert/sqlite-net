@@ -24,7 +24,7 @@ namespace SQLite.Tests
 		{
 			using (var db = new TestDb())
 			{
-				db.BindFunction("get_int_value", 0, null, GetIntValue);
+				db.BindFunction("get_int_value", 0, GetIntValue);
 
 				var res = db.Query<Result>("select get_int_value() as Value").First();
 				Assert.AreEqual(42, res.Value);
@@ -36,7 +36,7 @@ namespace SQLite.Tests
 		{
 			using (var db = new TestDb())
 			{
-				db.BindFunction("add2", 2, null, Add);
+				db.BindFunction("add2", 2, Add);
 
 				var res = db.Query<Result>("select add2(42, 17) as Value").First();
 				Assert.AreEqual(42 + 17, res.Value);
@@ -45,17 +45,17 @@ namespace SQLite.Tests
 
 		#region Bound functions
 
-		private object GetIntValue(object state, object[] args)
+		private object GetIntValue(object[] args)
 		{
 			return 42;
 		}
 
-		private object Add(object state, object[] args)
+		private object Add(object[] args)
 		{
-			var res = 0;
+			var res = 0l;
 			foreach (var arg in args)
 			{
-				res += (int)arg;
+				res += (long)arg;
 			}
 			return res;
 		}
